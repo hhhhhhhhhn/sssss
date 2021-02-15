@@ -1,8 +1,27 @@
 const varChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
 
+/*
+ *	turns html into the base and templates
+ *
+ *	in: "string of the sssss html"
+ *
+ *	out: [ 
+ *		"plain html string",
+ *
+ *		[
+ *			template {
+ *				variables: [ "varname" , ...],
+ *				code: "javascript code",
+ *				index: number,
+ *				id: "html id"
+ *			},
+ *			...
+ *		]
+ *	]
+ */
 function parseHTML(str) {
 	let currentChar
-	let output = ""
+	let outHTML = ""
 	let i = 0 // input str index
 	let templates = []
 
@@ -65,7 +84,7 @@ function parseHTML(str) {
 			index: templates.length,
 			id: `SssssId${templates.length}`
 		})
-		output += `<span id="${templates.slice(-1)[0].id}">${defaultText}<span>`
+		outHTML += `<span id="${templates.slice(-1)[0].id}">${defaultText}<span>`
 		i--
 	}
 
@@ -73,19 +92,67 @@ function parseHTML(str) {
 		if (str[i] == "{")
 			parseTemplate()
 		else
-			output += str[i]
+			outHTML += str[i]
 		i++
 	}
 
-	return [ output, templates ]
+	return [ outHTML, templates ]
 }
 
-let str = `
+/*
+ *	given the templates and javascript code, adds the automatic refreshing
+ *	of variables
+ *
+ *	in: [ 
+ *		"sssss js code",
+ *
+ *		[
+ *			template {
+ *				variables: [ "varname" , ...],
+ *				code: "javascript code",
+ *				index: number,
+ *				id: "html id"
+ *			},
+ *			...
+ *		]
+ *	]
+ *
+ *	out: "plain js code"
+ */
+function parseJS(str, templates) {
+	let queries = []
+	let functions = []
+	let functionNames = {} // object in { "variable": [ "func name", ...] } form
+
+	for (let { variables, code, id } of templates) {
+		queries.push(`let ${id} = document.getElementById("${id}")`)
+		functions.push(`function update${id}(){${id}.innerHTML = (${code})}`)
+		for (let variable of variables) {
+			if (functionNames[variable] === undefined)
+				functionNames[variable] = []
+			functionNames[variable].push(`update${id}()`)
+		}
+	}
+
+	console.log(queries, functions, functionNames)
+}
+
+let Html = `
 <head>
 <body>
 </body>
-{ @head+@body{} }(default val)
-{ @seconds }{poh}
+{ @head+@body }(default val)
+{ @seconds+@body }{poh}
 </head>
 `
-console.log(parseHTML(str))
+
+let js = `
+@head = 2
+@body = 34
+@seconds
+refresh(@head, @body, @seconds)
+`
+
+let [ html, templates ] = parseHTML(Html)
+console.log(html, templates)
+parseJS(js, templates)
