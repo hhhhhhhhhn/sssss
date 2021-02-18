@@ -1,4 +1,7 @@
+#!/usr/bin/env node
+
 const varChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
+const drawName = "refresh" // name of the function to draw a variable
 
 /*
  *	turns html into the base and templates
@@ -51,8 +54,7 @@ function parseHTML(str) {
 			}
 			while (str[i] != ")")
 			i++
-
-			return text.slice(1)
+return text.slice(1)
 		}
 
 		do {
@@ -120,39 +122,75 @@ function parseHTML(str) {
  *	out: "plain js code"
  */
 function parseJS(str, templates) {
-	let queries = []
-	let functions = []
-	let functionNames = {} // object in { "variable": [ "func name", ...] } form
+	let queries = [] // array of all DOM queries (getElementById)
+	let functions = [] // array of all function declarations
+	let functionCalls = {} // object in { "variable": [ "func call", ...] } form
+	let simpleFunctionCalls = [] // Variable-less functions
 
 	for (let { variables, code, id } of templates) {
 		queries.push(`let ${id} = document.getElementById("${id}")`)
 		functions.push(`function update${id}(){${id}.innerHTML = (${code})}`)
-		for (let variable of variables) {
-			if (functionNames[variable] === undefined)
-				functionNames[variable] = []
-			functionNames[variable].push(`update${id}()`)
+
+		if (variables.length == 0) {
+			simpleFunctionCalls.push(`update${id}()`)
+		}
+		else {
+			for (let variable of variables) {
+				if (functionCalls[variable] === undefined)
+					functionCalls[variable] = []
+				functionCalls[variable].push(`update${id}()`)
+			}
 		}
 	}
 
-	console.log(queries, functions, functionNames)
+	str = str.replace(/@/g, "SSSSS")
+	let outJS = [ ...queries, ...functions ].join("\n") + "\n"
+	let i = 0 // input str index
+
+	function parseDraw() {
+		let args = ""
+		let drawCalls  = []
+		i += drawName.length
+
+		while (str[i] != "(") {
+			i++
+		}
+		while (str[i] != ")") {
+			args += str[i]
+			i++
+		}
+
+		for (let variable of args.replace(/\s/g, "").split(","))
+			for (let call of functionCalls[variable] || [])
+				if (!drawCalls.includes(call))
+					drawCalls.push(call)
+
+		outJS += ";" + drawCalls.join(";")
+		i++
+	}
+	
+	while (i < str.length) {
+		if (str[i] == "r" && str.slice(i, i + drawName.length) == drawName) {
+			parseDraw()
+		}
+		else {
+			outJS += str[i]
+			i++
+		}
+	}
+
+	outJS += ";" + simpleFunctionCalls.join(";")
+
+	console.log(queries, functions, functionCalls, outJS)
+	return outJS
 }
 
-let Html = `
-<head>
-<body>
-</body>
-{ @head+@body }(default val)
-{ @seconds+@body }{poh}
-</head>
-`
 
-let js = `
-@head = 2
-@body = 34
-@seconds
-refresh(@head, @body, @seconds)
-`
+// Main function
+let fs = require("fs")
 
-let [ html, templates ] = parseHTML(Html)
-console.log(html, templates)
-parseJS(js, templates)
+if (process.argv.length == 2) {
+	console.log("Usage: sssss HTML_FILE [JS FILE [JS FILE ...]]")
+	process.exit(2)
+}
+
