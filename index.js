@@ -86,7 +86,7 @@ return text.slice(1)
 			index: templates.length,
 			id: `SssssId${templates.length}`
 		})
-		outHTML += `<span id="${templates.slice(-1)[0].id}">${defaultText}<span>`
+		outHTML += `<span id="${templates.slice(-1)[0].id}">${defaultText}</span>`
 		i--
 	}
 
@@ -103,7 +103,7 @@ return text.slice(1)
 
 /*
  *	given the templates and javascript code, adds the automatic refreshing
- *	of variables
+ *	of variables. the "runSimpleCalls" should be active only once.
  *
  *	in: [ 
  *		"sssss js code",
@@ -116,12 +116,14 @@ return text.slice(1)
  *				id: "html id"
  *			},
  *			...
- *		]
+ *		],
+ *
+ *		runSimpleCalls = true
  *	]
  *
  *	out: "plain js code"
  */
-function parseJS(str, templates) {
+function parseJS(str, templates, runSimpleCalls = false) {
 	let queries = [] // array of all DOM queries (getElementById)
 	let functions = [] // array of all function declarations
 	let functionCalls = {} // object in { "variable": [ "func call", ...] } form
@@ -149,12 +151,13 @@ function parseJS(str, templates) {
 
 	function parseDraw() {
 		let args = ""
-		let drawCalls  = []
+		let drawCalls = []
 		i += drawName.length
 
 		while (str[i] != "(") {
 			i++
 		}
+		i++
 		while (str[i] != ")") {
 			args += str[i]
 			i++
@@ -179,18 +182,72 @@ function parseJS(str, templates) {
 		}
 	}
 
-	outJS += ";" + simpleFunctionCalls.join(";")
+	if(runSimpleCalls)
+		outJS += ";" + simpleFunctionCalls.join(";")
 
-	console.log(queries, functions, functionCalls, outJS)
 	return outJS
 }
 
 
 // Main function
 let fs = require("fs")
+let path = require("path")
 
-if (process.argv.length == 2) {
+// writes file, creating the directory if needed
+function writeFile(filePath, contents) {
+	let fileDir = path.dirname(filePath)
+	if (!fs.existsSync(fileDir)) { 
+		fs.mkdirSync(fileDir, {recursive: true})
+	}
+	fs.writeFileSync(filePath, contents, "utf-8")
+}
+
+if (process.argv.length < 4) {
 	console.log("Usage: sssss HTML_FILE [JS FILE [JS FILE ...]]")
 	process.exit(2)
 }
 
+let baseDir = path.dirname(process.argv[2]) + "/"
+let baseName = path.basename(process.argv[2])
+let outDir = path.normalize(process.argv[3]) + "/"
+let inHTML = fs.readFileSync(process.argv[2], "utf-8")
+
+if (!inHTML) {
+	console.log("Please enter a valid HTML file")
+	process.exit(2)
+}
+
+let [ outHTML, templates ] = parseHTML(inHTML)
+
+let srcTags = inHTML.match(/src="[^"]*"/g)
+
+if (!srcTags) {
+	let outJSName = baseName + ".js"
+	outHTML = outHTML.replace(
+		"head>", 
+		`head><script src="./${outJSName}" defer></script>`
+	)
+	let outJS = parseJS("", templates, true)
+	writeFile(outDir + outJSName, outJS)
+}
+else {
+	srcTags = srcTags
+		.map(e => e.slice(5, -1))
+		.filter(e => e.slice(-3) == ".js")
+		.filter(e => e.slice(0, 4) != "http")
+	let runSimpleCalls = true
+	for (let inJSName of srcTags) {
+		try {
+			let inJSPath = baseDir + inJSName
+			let outJSPath = outDir + inJSName
+			let inJS = fs.readFileSync(inJSPath, "utf-8")
+			let outJS = parseJS(inJS, templates, runSimpleCalls)
+			writeFile(outJSPath, outJS)
+
+			if(runSimpleCalls)
+				runSimpleCalls = false
+		}
+		catch{}
+	}
+}
+writeFile(outDir + baseName, outHTML)
